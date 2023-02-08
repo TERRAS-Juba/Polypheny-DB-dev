@@ -1,0 +1,116 @@
+group "org.polypheny"
+
+
+configurations.all {
+    // check for updates every build
+    resolutionStrategy.cacheChangingModulesFor 0, "seconds"
+}
+
+
+configurations {
+    uiFiles { transitive = false }
+}
+
+
+dependencies {
+    implementation project(":core")
+    implementation project(":sql-language")
+    implementation project(":mql-language")
+    implementation project(":pig-language")
+    implementation project(":cql-language")
+    implementation project(":cypher-language")
+    implementation project(":monitoring")
+    //implementation project(":explore-by-example")
+
+    uiFiles group: "org.polypheny", name: "polypheny-ui", version: polypheny_ui_version
+
+    implementation group: "commons-io", name: "commons-io", version: commons_io_version  // Apache 2.0
+    implementation group: "io.javalin", name: "javalin", version: javalin_version // Apache 2.0
+    implementation group: "org.apache.logging.log4j", name: "log4j-slf4j2-impl", version: log4j_slf4j_impl_version // Apache 2.0
+
+    implementation group: "com.squareup.okhttp3", name: "okhttp", version: okhttp_version  // Apache 2.0
+    implementation group: "com.konghq", name: "unirest-java", version: unirest_version  // MIT
+    implementation group: "net.sf.opencsv", name: "opencsv", version: opencsv_version  // Apache 2.0
+    implementation group: "com.j256.simplemagic", name: "simplemagic", version: simplemagic_version // ISC
+
+
+    // --- Test Compile ---
+    testImplementation project(path: ":core", configuration: "tests")
+    testImplementation project(path: ":sql-language", configuration: "tests")
+
+    testImplementation group: "junit", name: "junit", version: junit_version
+}
+
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src/main/java"]
+            outputDir = file(project.buildDir.absolutePath + "/classes")
+        }
+        resources {
+            srcDirs = ["src/main/resources", "$buildDir/webapp"]
+        }
+        output.resourcesDir = file(project.buildDir.absolutePath + "/classes")
+    }
+    test {
+        java {
+            srcDirs = ["src/test/java"]
+            outputDir = file(project.buildDir.absolutePath + "/test-classes")
+        }
+        resources {
+            srcDirs = ["src/test/resources"]
+        }
+        output.resourcesDir = file(project.buildDir.absolutePath + "/test-classes")
+    }
+}
+
+compileJava {
+    dependsOn(":cql-language:processResources")
+    dependsOn(":cypher-language:processResources")
+    //dependsOn(":explore-by-example:processResources")
+    dependsOn(":mql-language:processResources")
+    dependsOn(":pig-language:processResources")
+}
+
+processResources {
+    dependsOn(":webui:unzipUiFiles")
+    dependsOn(":pig-language:processResources")
+}
+
+
+// unzip ui files
+task unzipUiFiles(type: Copy) {
+    from zipTree(configurations.uiFiles.singleFile)
+    into "$buildDir/webapp"
+    doLast {
+        file("$buildDir/webapp/index").mkdirs()
+        ant.move file: "$buildDir/webapp/webapp/index.html",
+                toDir: "$buildDir/webapp/index/"
+    }
+}
+task deleteUiFiles(type: Delete) {
+    project.delete(
+            fileTree( "$buildDir/webapp" )
+    )
+}
+unzipUiFiles.dependsOn(deleteUiFiles)
+classes.dependsOn(unzipUiFiles)
+
+
+/**
+ * JARs
+ */
+jar {
+    manifest {
+        attributes "Manifest-Version": "1.0"
+        attributes "Copyright": "The Polypheny Project (polypheny.org)"
+        attributes "Version": "$project.version"
+    }
+    from("$buildDir/webapp") // include webapp files
+    duplicatesStrategy = 'include'
+}
+java {
+    //withJavadocJar()
+    //withSourcesJar()
+}
