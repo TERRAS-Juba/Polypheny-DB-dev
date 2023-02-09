@@ -59,8 +59,6 @@ import org.polypheny.db.util.PolyphenyHomeDirManager;
 import org.polypheny.db.view.MaterializedViewManager;
 import org.polypheny.db.view.MaterializedViewManagerImpl;
 import org.polypheny.db.webui.*;
-import org.polypheny.security.authentication.model.User;
-import org.polypheny.security.authentication.service.UserService;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -129,8 +127,7 @@ public class PolyphenyDb {
             if (polyphenyDb.helpOption.showHelpIfRequested()) {
                 return;
             }
-
-            //polyphenyDb.runPolyphenyDb();
+            polyphenyDb.runPolyphenyDb();
         } catch (Throwable uncaught) {
             if (log.isErrorEnabled()) {
                 log.error("Uncaught Throwable.", uncaught);

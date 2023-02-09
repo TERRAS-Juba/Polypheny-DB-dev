@@ -1,6 +1,5 @@
 plugins {
     id 'java'
-    id "org.hibernate.orm" version "6.2.0.CR2"
 }
 
 group 'org.polypheny'
@@ -8,13 +7,21 @@ version '0.8.1'
 
 repositories {
     mavenCentral()
+    maven {
+        url "https://jitpack.io"
+    }
+    maven {
+        url 'https://mvnrepository.com/artifact/net.kemitix/sqlite-dialect'
+    }
 }
 
 dependencies {
+    implementation group: 'org.hibernate.orm', name: 'hibernate-core', version: '6.2.0.CR2'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
     implementation group: 'org.postgresql', name: 'postgresql', version: '42.1.4'
     implementation group: 'org.mindrot', name: 'jbcrypt', version: '0.4'
+
 }
 
 test {

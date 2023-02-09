@@ -21,25 +21,19 @@
 
 <hibernate-configuration>
     <session-factory>
-
-        <!-- Connection settings -->
         <property name="hibernate.connection.driver_class">org.postgresql.Driver</property>
         <property name="hibernate.connection.url">jdbc:postgresql://localhost:5432/users_spring</property>
         <property name="hibernate.connection.username">postgres</property>
         <property name="hibernate.connection.password">postgres</property>
-
-        <!-- SQL dialect -->
         <property name="hibernate.dialect">org.hibernate.dialect.PostgreSQLDialect</property>
-
-        <!-- Print executed SQL to stdout -->
         <property name="show_sql">true</property>
-
-        <!-- Update database on startup -->
-        <!-- <property name="hibernate.hbm2ddl.auto">create</property>-->
         <property name="hibernate.hbm2ddl.auto">update</property>
-
-        <!-- Annotated entity classes -->
+        <property name="hibernate.connection.verifyServerCertificate">false</property>
+        <property name="hibernate.connection.requireSSL">true</property>
+        <property name="hibernate.connection.useSSL">true</property>
+        <property name="hibernate.connection.autoReconnect">true</property>
         <mapping class="org.polypheny.security.authentication.model.User"/>
         <mapping class="org.polypheny.security.authentication.model.Role"/>
+
     </session-factory>
 </hibernate-configuration>
