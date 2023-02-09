@@ -66,7 +66,6 @@ import javax.inject.Inject;
 import java.awt.*;
 import java.io.File;
 import java.io.Serializable;
-import java.util.HashSet;
 
 
 @Command(name = "polypheny-db", description = "Polypheny-DB command line hook.")
@@ -131,7 +130,7 @@ public class PolyphenyDb {
                 return;
             }
 
-            polyphenyDb.runPolyphenyDb();
+            //polyphenyDb.runPolyphenyDb();
         } catch (Throwable uncaught) {
             if (log.isErrorEnabled()) {
                 log.error("Uncaught Throwable.", uncaught);

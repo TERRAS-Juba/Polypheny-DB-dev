@@ -19,6 +19,7 @@ package org.polypheny.security.authentication.service;
 import jakarta.persistence.NoResultException;
 import org.polypheny.security.authentication.model.User;
 import org.polypheny.security.authentication.repository.UserRepository;
+import org.polypheny.security.authentication.utils.PasswordEncryptor;
 
 import java.util.Optional;
 
@@ -38,6 +39,7 @@ public class UserService implements EntityService<User> {
     @Override
     public User save(User entity) {
         repository.open();
+        entity.setPassword(PasswordEncryptor.generateHashedPassword(entity.getPassword()));
         User user = repository.save(entity);
         repository.close();
         return user;
@@ -54,16 +56,22 @@ public class UserService implements EntityService<User> {
     @Override
     public void delete(User entity) {
         repository.open();
-        repository.deleteByUsername(entity.getUsername());
+        repository.deleteByUsername(entity.getId());
         repository.close();
     }
 
-    public User find(String username) {
+    public User find(String username,String password) {
         repository.open();
         try{
             User user = repository.findByUsername(username);
-            repository.close();
-            return user;
+            if(PasswordEncryptor.verifyPassword(password,user.getPassword())){
+                repository.close();
+                return user;
+            }else{
+                repository.close();
+                return null;
+            }
+
         }catch (NoResultException e){
             repository.close();
             return null;

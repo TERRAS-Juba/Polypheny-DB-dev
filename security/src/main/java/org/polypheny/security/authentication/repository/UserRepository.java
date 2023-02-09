@@ -66,18 +66,14 @@ public class UserRepository {
         session.beginTransaction();
         User updatedUser = session.merge(user);
         transaction.commit();
-        return user;
+        return updatedUser;
     }
 
-    public void deleteByUsername(String username) {
+    public void deleteByUsername(Long id) {
         Transaction transaction = session.getTransaction();
         session.beginTransaction();
-        session.remove(session.find(User.class, username));
+        session.remove(session.find(User.class, id));
         transaction.commit();
-    }
-
-    public void getAuthorities(User user) {
-
     }
 
     public void open() {
