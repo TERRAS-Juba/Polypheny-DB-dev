@@ -73,6 +73,8 @@ import org.polypheny.db.transaction.TransactionManager;
 import org.polypheny.db.type.PolyType;
 import org.polypheny.db.util.LimitIterator;
 import org.polypheny.db.util.Pair;
+import org.polypheny.security.authentication.model.User;
+import org.polypheny.security.authentication.service.UserService;
 
 import java.io.Serializable;
 import java.lang.reflect.Field;
@@ -113,6 +115,8 @@ public class DbmsMeta implements ProtobufMeta {
      */
     private final AtomicInteger statementIdGenerator = new AtomicInteger();
 
+    UserService userService = UserService.getInstance();
+    User user;
 
     /**
      * Creates a DbmsMeta
@@ -1240,12 +1244,14 @@ public class DbmsMeta implements ProtobufMeta {
         // User Authentication
         //==============================================================================================
         System.out.println("** User Authentication **");
-        final CatalogUser user;
-        try {
-            user = authenticator.authenticate(connectionParameters.getOrDefault("username", connectionParameters.get("user")), connectionParameters.getOrDefault("password", ""));
-        } catch (AuthenticationException e) {
-            throw new AvaticaRuntimeException(e.getLocalizedMessage(), -1, "", AvaticaSeverity.ERROR);
+        //user = authenticator.authenticate(connectionParameters.getOrDefault("username", connectionParameters.get("user")), connectionParameters.getOrDefault("password", ""));
+        User user = userService.find(connectionParameters.get("user"), connectionParameters.get("password"));
+        if(user==null) {
+            throw  new AvaticaRuntimeException("Invalid credentials", -1, "", AvaticaSeverity.ERROR);
         }
+        // Creation of a catalogue user -> useless
+        final CatalogUser catalogUser= new CatalogUser(Math.toIntExact(user.getId()),user.getUsername(),user.getPassword());
+        //==============================================================================================
         // assert user != null;
         String databaseName = connectionParameters.getOrDefault("database", connectionParameters.get("db"));
         if (databaseName == null || databaseName.isEmpty()) {
@@ -1256,7 +1262,7 @@ public class DbmsMeta implements ProtobufMeta {
             defaultSchemaName = "public";
         }
         // Create transaction
-        Transaction transaction = transactionManager.startTransaction(user, null, null, false, "AVATICA Interface");
+        Transaction transaction = transactionManager.startTransaction(catalogUser, null, null, false, "AVATICA Interface");
         // Check database access
         final CatalogDatabase database;
         try {
@@ -1281,7 +1287,7 @@ public class DbmsMeta implements ProtobufMeta {
         } catch (TransactionException e) {
             throw new AvaticaRuntimeException(e.getLocalizedMessage(), -1, "", AvaticaSeverity.ERROR);
         }
-        openConnections.put(ch.id, new PolyphenyDbConnectionHandle(ch, user, ch.id, database, schema, transactionManager));
+        openConnections.put(ch.id, new PolyphenyDbConnectionHandle(ch,catalogUser, ch.id, database, schema, transactionManager));
     }
 
     /**
