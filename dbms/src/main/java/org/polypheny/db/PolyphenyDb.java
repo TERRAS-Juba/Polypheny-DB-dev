@@ -59,11 +59,14 @@ import org.polypheny.db.util.PolyphenyHomeDirManager;
 import org.polypheny.db.view.MaterializedViewManager;
 import org.polypheny.db.view.MaterializedViewManagerImpl;
 import org.polypheny.db.webui.*;
+import org.polypheny.security.authentication.model.User;
+import org.polypheny.security.authentication.service.UserService;
 
 import javax.inject.Inject;
 import java.awt.*;
 import java.io.File;
 import java.io.Serializable;
+import java.util.HashSet;
 
 
 @Command(name = "polypheny-db", description = "Polypheny-DB command line hook.")
@@ -132,9 +135,7 @@ public class PolyphenyDb {
         } catch (Throwable uncaught) {
             if (log.isErrorEnabled()) {
                 log.error("Uncaught Throwable.", uncaught);
-                StatusService.printError(
-                        "Error: " + uncaught.getMessage(),
-                        ErrorConfig.builder().func(ErrorConfig.DO_NOTHING).doExit(true).showButton(true).buttonMessage("Exit").build());
+                StatusService.printError("Error: " + uncaught.getMessage(), ErrorConfig.builder().func(ErrorConfig.DO_NOTHING).doExit(true).showButton(true).buttonMessage("Exit").build());
             }
         }
     }

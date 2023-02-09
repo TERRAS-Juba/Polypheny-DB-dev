@@ -31,6 +31,4 @@ include 'ethereum-adapter'
 include 'security'
 
 include 'dbms'
-include 'security'
-include 'security'
 

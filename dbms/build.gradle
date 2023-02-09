@@ -23,7 +23,6 @@ apply plugin: "com.jaredsburrows.license"
 
 group "org.polypheny"
 
-
 dependencies {
     implementation project(":security")
     implementation project(":core")

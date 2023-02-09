@@ -70,7 +70,6 @@ allprojects {
             url "https://oss.sonatype.org/content/repositories/snapshots/"
         }
     }
-
     tasks.withType(JavaCompile) {
         options.encoding = "UTF-8"
     }
@@ -148,7 +147,6 @@ allprojects {
             generatedSourceDirs += file("${project.buildDir}/generated-test-sources")
         }
     }
-
 }
 
 
