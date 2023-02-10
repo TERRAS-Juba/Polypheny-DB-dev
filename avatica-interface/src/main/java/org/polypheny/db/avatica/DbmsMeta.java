@@ -73,8 +73,7 @@ import org.polypheny.db.transaction.TransactionManager;
 import org.polypheny.db.type.PolyType;
 import org.polypheny.db.util.LimitIterator;
 import org.polypheny.db.util.Pair;
-import org.polypheny.security.authentication.model.User;
-import org.polypheny.security.authentication.service.UserService;
+import org.polypheny.security.authentication.AuthenticatorDb;
 
 import java.io.Serializable;
 import java.lang.reflect.Field;
@@ -106,7 +105,7 @@ public class DbmsMeta implements ProtobufMeta {
     private final Catalog catalog = Catalog.getInstance();
 
     private final TransactionManager transactionManager;
-    private final Authenticator authenticator;
+    private Authenticator authenticator;
 
     private final MonitoringPage monitoringPage;
 
@@ -114,9 +113,6 @@ public class DbmsMeta implements ProtobufMeta {
      * Generates ids for statements. The ids are unique across all connections created by this DbmsMeta.
      */
     private final AtomicInteger statementIdGenerator = new AtomicInteger();
-
-    UserService userService = UserService.getInstance();
-    User user;
 
     /**
      * Creates a DbmsMeta
@@ -825,7 +821,6 @@ public class DbmsMeta implements ProtobufMeta {
      */
     @Override
     public StatementHandle prepare(final ConnectionHandle ch, final String sql, final long maxRowCount) {
-        System.out.println("prepare()");
         final PolyphenyDbConnectionHandle connection = getPolyphenyDbConnectionHandle(ch.id);
         synchronized (connection) {
             if (log.isTraceEnabled()) {
@@ -918,7 +913,6 @@ public class DbmsMeta implements ProtobufMeta {
      */
     @Override
     public ExecuteBatchResult prepareAndExecuteBatch(final StatementHandle h, final List<String> sqlCommands) throws NoSuchStatementException {
-        System.out.println("prepareAndExecute2()");
         final PolyphenyDbConnectionHandle connection = openConnections.get(h.connectionId);
         synchronized (connection) {
             if (log.isTraceEnabled()) {
@@ -940,7 +934,6 @@ public class DbmsMeta implements ProtobufMeta {
      */
     @Override
     public ExecuteBatchResult executeBatch(final StatementHandle h, final List<List<TypedValue>> parameterValues) throws NoSuchStatementException {
-        System.out.println("executeBatch()");
         final PolyphenyDbConnectionHandle connection = openConnections.get(h.connectionId);
         synchronized (connection) {
             if (log.isTraceEnabled()) {
@@ -1026,7 +1019,6 @@ public class DbmsMeta implements ProtobufMeta {
     @Override
     @Deprecated
     public ExecuteResult execute(final StatementHandle h, final List<TypedValue> parameterValues, final long maxRowCount) throws NoSuchStatementException {
-        System.out.println("execute2()");
         if (log.isTraceEnabled()) {
             log.trace("execute( StatementHandle {}, List<TypedValue> {}, long {} )", h, parameterValues, maxRowCount);
         }
@@ -1045,7 +1037,6 @@ public class DbmsMeta implements ProtobufMeta {
      */
     @Override
     public ExecuteResult execute(final StatementHandle h, final List<TypedValue> parameterValues, final int maxRowsInFirstFrame) throws NoSuchStatementException {
-        System.out.println("execute3()");
         final PolyphenyDbConnectionHandle connection = openConnections.get(h.connectionId);
         synchronized (connection) {
             if (log.isTraceEnabled()) {
@@ -1123,7 +1114,6 @@ public class DbmsMeta implements ProtobufMeta {
     }
 
 
-    //Important///////////////////////////
     private List<MetaResultSet> execute(StatementHandle h, PolyphenyDbConnectionHandle connection, PolyphenyDbStatementHandle statementHandle, int maxRowsInFirstFrame) {
         List<MetaResultSet> resultSets;
         if (statementHandle.getSignature().statementType == StatementType.OTHER_DDL) {
@@ -1244,13 +1234,12 @@ public class DbmsMeta implements ProtobufMeta {
         // User Authentication
         //==============================================================================================
         System.out.println("** User Authentication **");
-        //user = authenticator.authenticate(connectionParameters.getOrDefault("username", connectionParameters.get("user")), connectionParameters.getOrDefault("password", ""));
-        User user = userService.find(connectionParameters.get("user"), connectionParameters.get("password"));
-        if(user==null) {
-            throw  new AvaticaRuntimeException("Invalid credentials", -1, "", AvaticaSeverity.ERROR);
+        final CatalogUser user;
+        try {
+            user = authenticator.authenticate(connectionParameters.getOrDefault("username", connectionParameters.get("user")), connectionParameters.getOrDefault("password", ""));
+        } catch (AuthenticationException e) {
+            throw new RuntimeException(e);
         }
-        // Creation of a catalogue user -> useless
-        final CatalogUser catalogUser= new CatalogUser(Math.toIntExact(user.getId()),user.getUsername(),user.getPassword());
         //==============================================================================================
         // assert user != null;
         String databaseName = connectionParameters.getOrDefault("database", connectionParameters.get("db"));
@@ -1262,7 +1251,7 @@ public class DbmsMeta implements ProtobufMeta {
             defaultSchemaName = "public";
         }
         // Create transaction
-        Transaction transaction = transactionManager.startTransaction(catalogUser, null, null, false, "AVATICA Interface");
+        Transaction transaction = transactionManager.startTransaction(user, null, null, false, "AVATICA Interface");
         // Check database access
         final CatalogDatabase database;
         try {
@@ -1287,7 +1276,7 @@ public class DbmsMeta implements ProtobufMeta {
         } catch (TransactionException e) {
             throw new AvaticaRuntimeException(e.getLocalizedMessage(), -1, "", AvaticaSeverity.ERROR);
         }
-        openConnections.put(ch.id, new PolyphenyDbConnectionHandle(ch,catalogUser, ch.id, database, schema, transactionManager));
+        openConnections.put(ch.id, new PolyphenyDbConnectionHandle(ch,user, ch.id, database, schema, transactionManager));
     }
 
     /**

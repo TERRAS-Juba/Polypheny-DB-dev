@@ -59,6 +59,7 @@ import org.polypheny.db.util.PolyphenyHomeDirManager;
 import org.polypheny.db.view.MaterializedViewManager;
 import org.polypheny.db.view.MaterializedViewManagerImpl;
 import org.polypheny.db.webui.*;
+import org.polypheny.security.authentication.AuthenticatorDb;
 
 import javax.inject.Inject;
 import java.awt.*;
@@ -289,7 +290,8 @@ public class PolyphenyDb {
             }
         } );*/
 
-        final Authenticator authenticator = new AuthenticatorImpl();
+        // Inject new authenticator
+        final Authenticator authenticator = new AuthenticatorDb();
 
         // Initialize interface manager
         QueryInterfaceManager.initialize(transactionManager, authenticator);

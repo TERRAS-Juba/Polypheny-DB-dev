@@ -21,6 +21,7 @@ dependencies {
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
     implementation group: 'org.postgresql', name: 'postgresql', version: '42.1.4'
     implementation group: 'org.mindrot', name: 'jbcrypt', version: '0.4'
+    implementation project(":core")
 
 }
 
