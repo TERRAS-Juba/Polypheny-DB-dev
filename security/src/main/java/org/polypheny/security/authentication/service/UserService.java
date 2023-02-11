@@ -56,7 +56,7 @@ public class UserService implements EntityService<User> {
     @Override
     public void delete(User entity) {
         repository.open();
-        repository.deleteByUsername(entity.getId());
+        repository.delete(entity.getId());
         repository.close();
     }
 

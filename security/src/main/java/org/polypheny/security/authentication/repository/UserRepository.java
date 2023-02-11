@@ -30,15 +30,22 @@ import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.polypheny.security.authentication.model.User;
 
 public class UserRepository {
-    final private StandardServiceRegistry registry = new StandardServiceRegistryBuilder().configure() // configures settings from hibernate.cfg.xml
-            .build();
-    final SessionFactory factory = new MetadataSources(registry).buildMetadata().buildSessionFactory();
+    final private StandardServiceRegistry registry;
+    final private SessionFactory factory;
 
-    Session session;
+    private Session session;
+
+    public UserRepository(StandardServiceRegistry registry, SessionFactory factory) {
+        this.registry = registry;
+        this.factory = factory;
+    }
 
     public UserRepository() {
-
+        registry = new StandardServiceRegistryBuilder().configure() // configures settings from hibernate.cfg.xml
+                .build();
+        factory = new MetadataSources(registry).buildMetadata().buildSessionFactory();
     }
+
     public User save(User user) {
         Transaction transaction = session.getTransaction();
         session.beginTransaction();
@@ -69,7 +76,7 @@ public class UserRepository {
         return updatedUser;
     }
 
-    public void deleteByUsername(Long id) {
+    public void delete(Long id) {
         Transaction transaction = session.getTransaction();
         session.beginTransaction();
         session.remove(session.find(User.class, id));
