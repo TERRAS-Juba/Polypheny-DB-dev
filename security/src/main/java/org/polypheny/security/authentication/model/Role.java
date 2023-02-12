@@ -13,11 +13,11 @@ import java.util.Set;
 @Setter
 public class Role {
     @Id
-    @GeneratedValue (strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(length = 50, nullable = false)
     private String name;
-    @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, mappedBy = "roles")
+    @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE, CascadeType.DETACH}, mappedBy = "roles")
     private Set<User> users = new HashSet<>();
 
     public Role(Long id, String name, Set<User> users) {

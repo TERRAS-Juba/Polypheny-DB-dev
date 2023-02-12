@@ -603,8 +603,6 @@ public class CatalogImpl extends Catalog {
     private void initQueryInterfaceInfo(@NotNull DB db ) {
         queryInterfaces = db.hashMap( "queryInterfaces", Serializer.INTEGER, new GenericSerializer<CatalogQueryInterface>() ).createOrOpen();
         queryInterfaceNames = db.hashMap( "queryInterfaceNames", Serializer.STRING, new GenericSerializer<CatalogQueryInterface>() ).createOrOpen();
-        queryInterfaces.remove(2);
-        queryInterfaceNames.remove("rest");
     }
 
 
@@ -815,10 +813,10 @@ public class CatalogImpl extends Catalog {
             addQueryInterface( "avatica", "org.polypheny.db.avatica.AvaticaInterface", jdbcSettings );
 
             // Add REST interface
-            /*Map<String, String> restSettings = new HashMap<>();
+            Map<String, String> restSettings = new HashMap<>();
             restSettings.put( "port", "8089" );
             restSettings.put( "maxUploadSizeMb", "10000" );
-            addQueryInterface( "rest", "org.polypheny.db.restapi.HttpRestServer", restSettings );*/
+            addQueryInterface( "rest", "org.polypheny.db.restapi.HttpRestServer", restSettings );
 
             // Add HTTP interface
             Map<String, String> httpSettings = new HashMap<>();

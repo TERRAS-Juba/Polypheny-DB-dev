@@ -40,7 +40,6 @@ public class TestUserRepository {
         factory = new MetadataSources(registry).buildMetadata().buildSessionFactory();
         repository = new UserRepository(registry, factory);
     }
-
     @Test
     public void testOpenCloseSession() {
         repository.open();

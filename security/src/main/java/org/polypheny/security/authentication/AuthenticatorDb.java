@@ -23,14 +23,24 @@ import org.polypheny.security.authentication.model.User;
 import org.polypheny.security.authentication.service.UserService;
 
 public class AuthenticatorDb implements Authenticator {
-        private final UserService userService=UserService.getInstance();
-        @Override
-        public CatalogUser authenticate(String username, String password) throws AuthenticationException {
-                User user=userService.find(username,password);
-                if(user!=null){
-                        return new CatalogUser(Math.toIntExact(user.getId()),user.getUsername(),user.getPassword());
-                }else {
-                     throw new AuthenticationException("Invalid Credentials");
-                }
+    private final UserService userService = new UserService();
+
+    @Override
+    public CatalogUser authenticate(String username, String password) throws AuthenticationException {
+        User user = userService.find(username, password);
+        if (user != null) {
+            return new CatalogUser(Math.toIntExact(user.getId()), user.getUsername(), user.getPassword());
+        } else {
+            throw new AuthenticationException("Invalid Credentials");
         }
+    }
+
+    public User authenticateDomain(String username, String password) throws AuthenticationException {
+        User user = userService.find(username, password);
+        if (user != null) {
+            return user;
+        } else {
+            throw new AuthenticationException("Invalid Credentials");
+        }
+    }
 }

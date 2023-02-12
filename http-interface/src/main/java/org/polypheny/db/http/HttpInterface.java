@@ -17,29 +17,21 @@
 package org.polypheny.db.http;
 
 
-import static io.javalin.apibuilder.ApiBuilder.post;
-
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.google.common.collect.ImmutableList;
 import com.google.gson.JsonSyntaxException;
 import io.javalin.Javalin;
+import io.javalin.http.BadRequestResponse;
 import io.javalin.http.Context;
+import io.javalin.http.Handler;
+import io.javalin.http.NotFoundResponse;
 import io.javalin.plugin.json.JsonMapper;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import org.polypheny.db.StatusService;
 import org.polypheny.db.catalog.Catalog;
 import org.polypheny.db.catalog.Catalog.QueryLanguage;
+import org.polypheny.db.iface.AuthenticationException;
 import org.polypheny.db.iface.Authenticator;
 import org.polypheny.db.iface.QueryInterface;
 import org.polypheny.db.information.InformationGroup;
@@ -53,20 +45,33 @@ import org.polypheny.db.webui.TemporalFileManager;
 import org.polypheny.db.webui.crud.LanguageCrud;
 import org.polypheny.db.webui.models.Result;
 import org.polypheny.db.webui.models.requests.QueryRequest;
+import org.polypheny.security.admin.CrudManager;
+import org.polypheny.security.admin.dto.AddRoleRequest;
+import org.polypheny.security.admin.dto.AddUserRequest;
+import org.polypheny.security.authentication.AuthenticatorDb;
+import org.polypheny.security.authentication.dto.AuthenticationRequest;
+import org.polypheny.security.authentication.dto.AuthenticationResponse;
+import org.polypheny.security.authentication.model.User;
+import org.polypheny.security.tokenmanagement.JwtManager;
 
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
+
+import static io.javalin.apibuilder.ApiBuilder.delete;
+import static io.javalin.apibuilder.ApiBuilder.post;
 
 @Slf4j
 public class HttpInterface extends QueryInterface {
-
     @SuppressWarnings("WeakerAccess")
     public static final String INTERFACE_NAME = "HTTP Interface";
     @SuppressWarnings("WeakerAccess")
     public static final String INTERFACE_DESCRIPTION = "HTTP-based query interface, which supports all available languages via specific routes.";
     @SuppressWarnings("WeakerAccess")
-    public static final List<QueryInterfaceSetting> AVAILABLE_SETTINGS = ImmutableList.of(
-            new QueryInterfaceSettingInteger( "port", false, true, false, 13137 ),
-            new QueryInterfaceSettingInteger( "maxUploadSizeMb", false, true, true, 10000 )
-    );
+    public static final List<QueryInterfaceSetting> AVAILABLE_SETTINGS = ImmutableList.of(new QueryInterfaceSettingInteger("port", false, true, false, 13137), new QueryInterfaceSettingInteger("maxUploadSizeMb", false, true, true, 10000));
 
     private Set<String> xIds = new HashSet<>();
 
@@ -80,97 +85,165 @@ public class HttpInterface extends QueryInterface {
 
     private Javalin server;
 
+    // Add support for authentication
+    AuthenticatorDb authenticator = new AuthenticatorDb();
 
-    public HttpInterface( TransactionManager transactionManager, Authenticator authenticator, int ifaceId, String uniqueName, Map<String, String> settings ) {
-        super( transactionManager, authenticator, ifaceId, uniqueName, settings, true, false );
+    // Add support for jwt authentication
+    JwtManager manager = new JwtManager();
+
+    //Add support for admin management
+    CrudManager crudManager = new CrudManager();
+
+    public HttpInterface(TransactionManager transactionManager, Authenticator authenticator, int ifaceId, String uniqueName, Map<String, String> settings) {
+        super(transactionManager, authenticator, ifaceId, uniqueName, settings, true, false);
         this.uniqueName = uniqueName;
-        this.port = Integer.parseInt( settings.get( "port" ) );
-        if ( !Util.checkIfPortIsAvailable( port ) ) {
+        this.port = Integer.parseInt(settings.get("port"));
+        if (!Util.checkIfPortIsAvailable(port)) {
             // Port is already in use
-            throw new RuntimeException( "Unable to start " + INTERFACE_NAME + " on port " + port + "! The port is already in use." );
+            throw new RuntimeException("Unable to start " + INTERFACE_NAME + " on port " + port + "! The port is already in use.");
         }
         // Add information page
         monitoringPage = new MonitoringPage();
     }
-
 
     @Override
     public void run() {
         JsonMapper gsonMapper = new JsonMapper() {
             @NotNull
             @Override
-            public <T> T fromJsonString( @NotNull String json, @NotNull Class<T> targetType ) {
-                return HttpServer.gson.fromJson( json, targetType );
+            public <T> T fromJsonString(@NotNull String json, @NotNull Class<T> targetType) {
+                return HttpServer.gson.fromJson(json, targetType);
             }
 
 
             @NotNull
             @Override
-            public String toJsonString( @NotNull Object obj ) {
-                return HttpServer.gson.toJson( obj );
+            public String toJsonString(@NotNull Object obj) {
+                return HttpServer.gson.toJson(obj);
             }
 
         };
-        server = Javalin.create( config -> {
-            config.jsonMapper( gsonMapper );
+        // Create the server
+        server = Javalin.create(config -> {
+            config.jsonMapper(gsonMapper);
             config.enableCorsForAllOrigins();
-        } ).start( port );
-        server.exception( Exception.class, ( e, ctx ) -> {
-            log.warn( "Caught exception in the HTTP interface", e );
-            if ( e instanceof JsonSyntaxException ) {
-                ctx.result( "Malformed request: " + e.getCause().getMessage() );
+        }).start(port);
+        server.exception(Exception.class, (e, ctx) -> {
+            log.warn("Caught exception in the HTTP interface", e);
+            if (e instanceof JsonSyntaxException) {
+                ctx.result("Malformed request: " + e.getCause().getMessage());
             } else {
-                ctx.result( "Error: " + e.getMessage() );
+                ctx.result("Error: " + e.getMessage());
             }
-        } );
+        });
+        server.routes(() -> {
+            // Authentication
+            post("/auth/user/login", login);
+            post("/auth/admin/login", loginAdmin);
+            // Query operations
+            post("/query/mongo", ctx -> anyQuery(QueryLanguage.MONGO_QL, ctx));
+            post("/query/mql", ctx -> anyQuery(QueryLanguage.MONGO_QL, ctx));
+            post("/query/sql", ctx -> anyQuery(QueryLanguage.SQL, ctx));
+            post("/query/piglet", ctx -> anyQuery(QueryLanguage.PIG, ctx));
+            post("/query/pig", ctx -> anyQuery(QueryLanguage.PIG, ctx));
+            post("/query/cql", ctx -> anyQuery(QueryLanguage.CQL, ctx));
+            post("/query/cypher", ctx -> anyQuery(QueryLanguage.CYPHER, ctx));
+            post("/query/opencypher", ctx -> anyQuery(QueryLanguage.CYPHER, ctx));
+            // admin operations
+            post("/dashboard/add_user", addUser);
+            delete("/dashboard/delete_user/{username}", deleteUser);
+            post("/dashboard/add_role", addRole);
+            delete("/dashboard/delete_role/{name}", deleteRole);
+            StatusService.printInfo(String.format("%s started and is listening on port %d.", INTERFACE_NAME, port));
+        });
+        server.before(("*"), ctx -> {
+            ctx.res.setHeader("Content-Type", "application/json");
+        });
+        server.before("/query/*", validateUserToken);
+        server.before("/dashboard/*", validateAdminToken);
 
-        server.routes( () -> {
-            post( "/mongo", ctx -> anyQuery( QueryLanguage.MONGO_QL, ctx ) );
-            post( "/mql", ctx -> anyQuery( QueryLanguage.MONGO_QL, ctx ) );
-
-            post( "/sql", ctx -> anyQuery( QueryLanguage.SQL, ctx ) );
-
-            post( "/piglet", ctx -> anyQuery( QueryLanguage.PIG, ctx ) );
-            post( "/pig", ctx -> anyQuery( QueryLanguage.PIG, ctx ) );
-
-            post( "/cql", ctx -> anyQuery( QueryLanguage.CQL, ctx ) );
-
-            post( "/cypher", ctx -> anyQuery( QueryLanguage.CYPHER, ctx ) );
-            post( "/opencypher", ctx -> anyQuery( QueryLanguage.CYPHER, ctx ) );
-
-            StatusService.printInfo( String.format( "%s started and is listening on port %d.", INTERFACE_NAME, port ) );
-        } );
     }
 
+    private final Handler login = ctx -> {
+        User user = getUser(ctx);
+        String token = manager.generateToken(user);
+        ctx.json(new AuthenticationResponse(token, "Bearer", Date.from(Instant.now()).toString()));
+    };
+    private final Handler loginAdmin = ctx -> {
+        User user = getUser(ctx);
+        if (user.getRoles().toString().contains("ADMIN")) {
+            String token = manager.generateToken(user);
+            ctx.json(new AuthenticationResponse(token, "Bearer", Date.from(Instant.now()).toString()));
+        } else {
+            throw new NotFoundResponse();
+        }
+    };
+    private final Handler validateUserToken = ctx -> {
+        manager.extractTokenInformations(ctx);
+    };
+    private final Handler validateAdminToken = (ctx) -> {
+        Optional<DecodedJWT> decodedJWT = manager.extractTokenInformations(ctx);
+        manager.validateUserRole(ctx, decodedJWT.get(), "ADMIN");
+    };
+    private final Handler addUser = (ctx -> {
+        AddUserRequest request = ctx.bodyAsClass(AddUserRequest.class);
+        crudManager.addUser(request);
+        ctx.status(201);
+    });
+    private final Handler deleteUser = (ctx -> {
+        String username = ctx.pathParam("username");
+        if (username != null && !username.equals("")) {
+            crudManager.deleteUser(username);
+        } else {
+            throw new BadRequestResponse();
+        }
+        ctx.status(204);
+    });
+    private final Handler addRole = (ctx -> {
+        AddRoleRequest request = ctx.bodyAsClass(AddRoleRequest.class);
+        crudManager.addRole(request);
+        ctx.status(201);
+    });
+    private final Handler deleteRole = (ctx -> {
+        String name = ctx.pathParam("name");
+        if (name != null && !name.equals("")) {
+            crudManager.deleteRole(name);
+        } else {
+            throw new BadRequestResponse();
+        }
+        ctx.status(204);
+    });
 
-    public void anyQuery( QueryLanguage language, final Context ctx ) {
-        QueryRequest query = ctx.bodyAsClass( QueryRequest.class );
+    private User getUser(Context ctx) {
+        AuthenticationRequest request = ctx.bodyAsClass(AuthenticationRequest.class);
+        try {
+            return authenticator.authenticateDomain(request.getUsername(), request.getPassword());
+        } catch (AuthenticationException e) {
+            throw new NotFoundResponse();
+        }
+    }
+
+    public void anyQuery(QueryLanguage language, final Context ctx) {
+        QueryRequest query = ctx.bodyAsClass(QueryRequest.class);
 
         cleanup();
 
-        List<Result> results = LanguageCrud.anyQuery(
-                language,
-                null,
-                query,
-                transactionManager,
-                Catalog.defaultUserId,
-                Catalog.defaultDatabaseId,
-                null );
-        ctx.json( results.toArray( new Result[0] ) );
+        List<Result> results = LanguageCrud.anyQuery(language, null, query, transactionManager, Catalog.defaultUserId, Catalog.defaultDatabaseId, null);
+        ctx.json(results.toArray(new Result[0]));
 
-        if ( !statementCounters.containsKey( language ) ) {
-            statementCounters.put( language, new AtomicLong() );
+        if (!statementCounters.containsKey(language)) {
+            statementCounters.put(language, new AtomicLong());
         }
-        statementCounters.get( language ).incrementAndGet();
-        xIds.addAll( results.stream().map( Result::getXid ).filter( Objects::nonNull ).collect( Collectors.toSet() ) );
+        statementCounters.get(language).incrementAndGet();
+        xIds.addAll(results.stream().map(Result::getXid).filter(Objects::nonNull).collect(Collectors.toSet()));
     }
 
 
     private void cleanup() {
         // todo change this also in websocket logic, rather hacky
-        for ( String xId : xIds ) {
-            InformationManager.close( xId );
-            TemporalFileManager.deleteFilesOfTransaction( xId );
+        for (String xId : xIds) {
+            InformationManager.close(xId);
+            TemporalFileManager.deleteFilesOfTransaction(xId);
         }
     }
 
@@ -195,10 +268,9 @@ public class HttpInterface extends QueryInterface {
 
 
     @Override
-    protected void reloadSettings( List<String> updatedSettings ) {
+    protected void reloadSettings(List<String> updatedSettings) {
 
     }
-
 
     private class MonitoringPage {
 
@@ -210,44 +282,41 @@ public class HttpInterface extends QueryInterface {
         public MonitoringPage() {
             InformationManager im = InformationManager.getInstance();
 
-            informationPage = new InformationPage( uniqueName, INTERFACE_NAME ).fullWidth().setLabel( "Interfaces" );
-            informationGroupRequests = new InformationGroup( informationPage, "Requests" );
+            informationPage = new InformationPage(uniqueName, INTERFACE_NAME).fullWidth().setLabel("Interfaces");
+            informationGroupRequests = new InformationGroup(informationPage, "Requests");
 
-            im.addPage( informationPage );
-            im.addGroup( informationGroupRequests );
+            im.addPage(informationPage);
+            im.addGroup(informationGroupRequests);
 
-            statementsTable = new InformationTable(
-                    informationGroupRequests,
-                    Arrays.asList( "Language", "Percent", "Absolute" )
-            );
-            statementsTable.setOrder( 2 );
-            im.registerInformation( statementsTable );
+            statementsTable = new InformationTable(informationGroupRequests, Arrays.asList("Language", "Percent", "Absolute"));
+            statementsTable.setOrder(2);
+            im.registerInformation(statementsTable);
 
-            informationGroupRequests.setRefreshFunction( this::update );
+            informationGroupRequests.setRefreshFunction(this::update);
         }
 
 
         public void update() {
             double total = 0;
-            for ( AtomicLong counter : statementCounters.values() ) {
+            for (AtomicLong counter : statementCounters.values()) {
                 total += counter.get();
             }
 
             DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance();
-            symbols.setDecimalSeparator( '.' );
-            DecimalFormat df = new DecimalFormat( "0.0", symbols );
+            symbols.setDecimalSeparator('.');
+            DecimalFormat df = new DecimalFormat("0.0", symbols);
             statementsTable.reset();
-            for ( Map.Entry<QueryLanguage, AtomicLong> entry : statementCounters.entrySet() ) {
-                statementsTable.addRow( entry.getKey().name(), df.format( total == 0 ? 0 : (entry.getValue().longValue() / total) * 100 ) + " %", entry.getValue().longValue() );
+            for (Map.Entry<QueryLanguage, AtomicLong> entry : statementCounters.entrySet()) {
+                statementsTable.addRow(entry.getKey().name(), df.format(total == 0 ? 0 : (entry.getValue().longValue() / total) * 100) + " %", entry.getValue().longValue());
             }
         }
 
 
         public void remove() {
             InformationManager im = InformationManager.getInstance();
-            im.removeInformation( statementsTable );
-            im.removeGroup( informationGroupRequests );
-            im.removePage( informationPage );
+            im.removeInformation(statementsTable);
+            im.removeGroup(informationGroupRequests);
+            im.removePage(informationPage);
         }
 
     }

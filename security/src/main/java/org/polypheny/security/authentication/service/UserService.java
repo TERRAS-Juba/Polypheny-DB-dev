@@ -21,21 +21,9 @@ import org.polypheny.security.authentication.model.User;
 import org.polypheny.security.authentication.repository.UserRepository;
 import org.polypheny.security.authentication.utils.PasswordEncryptor;
 
-import java.util.Optional;
-
 public class UserService implements EntityService<User> {
-    final UserRepository repository =new UserRepository();
-    private static UserService service;
+    final UserRepository repository = new UserRepository();
 
-    public static UserService getInstance(){
-        if (service==null)
-        {
-            synchronized (UserService.class){
-                service=new UserService();
-            }
-        }
-        return service;
-    }
     @Override
     public User save(User entity) {
         repository.open();
@@ -60,19 +48,32 @@ public class UserService implements EntityService<User> {
         repository.close();
     }
 
-    public User find(String username,String password) {
+    public User find(String username, String password) {
         repository.open();
-        try{
+        try {
             User user = repository.findByUsername(username);
-            if(PasswordEncryptor.verifyPassword(password,user.getPassword())){
+            if (PasswordEncryptor.verifyPassword(password, user.getPassword())) {
                 repository.close();
                 return user;
-            }else{
+            } else {
                 repository.close();
                 return null;
             }
 
-        }catch (NoResultException e){
+        } catch (NoResultException e) {
+            repository.close();
+            return null;
+        }
+    }
+
+    public User findByUsername(String username) {
+        repository.open();
+        try {
+            User user = repository.findByUsername(username);
+            repository.close();
+            return user;
+
+        } catch (NoResultException e) {
             repository.close();
             return null;
         }
