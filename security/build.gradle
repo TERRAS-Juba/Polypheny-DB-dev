@@ -21,7 +21,8 @@ dependencies {
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
     implementation group: 'org.postgresql', name: 'postgresql', version: '42.1.4'
     implementation group: 'org.mindrot', name: 'jbcrypt', version: '0.4'
-    testImplementation group: 'com.h2database', name: 'h2', version: '1.3.148'
+    // https://mvnrepository.com/artifact/com.h2database/h2
+    implementation group: 'com.h2database', name: 'h2', version: '2.1.214'
     implementation 'com.auth0:java-jwt:4.2.2'
     implementation 'com.github.kmehrunes:javalin-jwt:0.7.0'
     implementation group: "io.javalin", name: "javalin", version: javalin_version // Apache 2.0

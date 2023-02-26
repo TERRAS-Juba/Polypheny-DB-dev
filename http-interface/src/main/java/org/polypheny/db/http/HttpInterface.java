@@ -27,6 +27,9 @@ import io.javalin.http.Handler;
 import io.javalin.http.NotFoundResponse;
 import io.javalin.plugin.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.jetty.http.HttpVersion;
+import org.eclipse.jetty.server.*;
+import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.jetbrains.annotations.NotNull;
 import org.polypheny.db.StatusService;
 import org.polypheny.db.catalog.Catalog;
@@ -54,6 +57,10 @@ import org.polypheny.security.authentication.dto.AuthenticationResponse;
 import org.polypheny.security.authentication.model.User;
 import org.polypheny.security.tokenmanagement.JwtManager;
 
+import java.io.FileNotFoundException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.Instant;
@@ -61,8 +68,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import static io.javalin.apibuilder.ApiBuilder.delete;
-import static io.javalin.apibuilder.ApiBuilder.post;
+import static io.javalin.apibuilder.ApiBuilder.*;
 
 @Slf4j
 public class HttpInterface extends QueryInterface {
@@ -125,9 +131,38 @@ public class HttpInterface extends QueryInterface {
         };
         // Create the server
         server = Javalin.create(config -> {
+            config.server(() -> {
+                // Access keystore
+                Path keystorePath = Paths.get(System.getenv("KEYSTORE_PATH")).toAbsolutePath();
+                if (!Files.exists(keystorePath)) try {
+                    throw new FileNotFoundException(keystorePath.toString());
+                } catch (FileNotFoundException e) {
+                    throw new RuntimeException(e);
+                }
+                // HTTP Configuration
+                HttpConfiguration httpConfig = new HttpConfiguration();
+                httpConfig.setSecureScheme("https");
+                httpConfig.setSendServerVersion(true);
+                httpConfig.setSendDateHeader(true);
+                HttpConfiguration httpsConfig = new HttpConfiguration(httpConfig);
+                httpsConfig.addCustomizer(new SecureRequestCustomizer());
+                // SSL factory
+                SslContextFactory sslContextFactory = new SslContextFactory.Server();
+                sslContextFactory.setKeyStorePath(keystorePath.toString());
+                sslContextFactory.setKeyStorePassword(System.getenv("KEYSTORE_KEY"));
+                sslContextFactory.setTrustStorePath(keystorePath.toString());
+                sslContextFactory.setTrustStorePassword(System.getenv("KEYSTORE_KEY"));
+                // Create ssl server
+                Server sslServer = new Server();
+                // Add connectors
+                ServerConnector sslConnector = new ServerConnector(sslServer, new SslConnectionFactory(sslContextFactory, HttpVersion.HTTP_1_1.asString()), new HttpConnectionFactory(httpsConfig));
+                sslConnector.setPort(443);
+                sslServer.setConnectors(new Connector[]{sslConnector});
+                return sslServer;
+            });
             config.jsonMapper(gsonMapper);
             config.enableCorsForAllOrigins();
-        }).start(port);
+        }).start();
         server.exception(Exception.class, (e, ctx) -> {
             log.warn("Caught exception in the HTTP interface", e);
             if (e instanceof JsonSyntaxException) {
@@ -137,6 +172,7 @@ public class HttpInterface extends QueryInterface {
             }
         });
         server.routes(() -> {
+            get("/", ctx -> ctx.json("HTTP Interface"));
             // Authentication
             post("/auth/user/login", login);
             post("/auth/admin/login", loginAdmin);
@@ -161,7 +197,6 @@ public class HttpInterface extends QueryInterface {
         });
         server.before("/query/*", validateUserToken);
         server.before("/dashboard/*", validateAdminToken);
-
     }
 
     private final Handler login = ctx -> {

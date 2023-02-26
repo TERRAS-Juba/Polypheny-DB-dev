@@ -41,7 +41,7 @@ public class UserRepository {
     }
 
     public UserRepository() {
-        registry = new StandardServiceRegistryBuilder().configure() // configures settings from hibernate.cfg.xml
+        registry = new StandardServiceRegistryBuilder().configure() // configures settings from hibernate-postgresql.cfg.xml
                 .build();
         factory = new MetadataSources(registry).buildMetadata().buildSessionFactory();
     }

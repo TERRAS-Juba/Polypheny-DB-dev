@@ -36,7 +36,7 @@ import java.util.Date;
 import java.util.Optional;
 
 public class JwtManager {
-    private final Algorithm algorithm = Algorithm.HMAC256("very_secret");
+    private final Algorithm algorithm = Algorithm.HMAC256(System.getenv("JWT_KEY"));
     private final JWTGenerator<User> generator = (user, alg) -> {
         JWTCreator.Builder token = JWT.create().withClaim("username", user.getUsername()).withClaim("roles", user.getRoles().toString()).withSubject(user.getUsername()).withIssuedAt(Date.from(Instant.now())).withExpiresAt(Date.from(Instant.now().plus(12, ChronoUnit.HOURS)));
         return token.sign(alg);
