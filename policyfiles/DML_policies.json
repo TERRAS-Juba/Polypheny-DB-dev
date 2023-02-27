@@ -1,0 +1,39 @@
+[
+  {
+    "rule_type": "select",
+    "rule_granularity_role":["DOCTOR","NURSE"],
+    "forbidden_select": [
+      "employee","department"
+    ]
+  },
+  {
+    "rule_type": "select",
+    "rule_granularity_user":["4"],
+    "forbidden_select": [
+      "patient_fr",
+      "patient_es"
+    ]
+  },
+  {
+    "rule_type": "select",
+    "rule_granularity_role":["NURSE"],
+    "forbidden_select": [
+      "patient_fr",
+      "patient_es"
+    ]
+  },
+  {
+    "rule_type": "select",
+    "rule_granularity_role":["DOCTOR"],
+    "forbidden_select": [
+      "consultation"
+    ]
+  },
+  {
+    "rule_type": "select",
+    "rule_granularity_user":["*"],
+    "forbidden_select": [
+      "users"
+    ]
+  }
+]

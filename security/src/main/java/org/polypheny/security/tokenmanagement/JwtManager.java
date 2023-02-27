@@ -38,7 +38,7 @@ import java.util.Optional;
 public class JwtManager {
     private final Algorithm algorithm = Algorithm.HMAC256(System.getenv("JWT_KEY"));
     private final JWTGenerator<User> generator = (user, alg) -> {
-        JWTCreator.Builder token = JWT.create().withClaim("username", user.getUsername()).withClaim("roles", user.getRoles().toString()).withSubject(user.getUsername()).withIssuedAt(Date.from(Instant.now())).withExpiresAt(Date.from(Instant.now().plus(12, ChronoUnit.HOURS)));
+        JWTCreator.Builder token = JWT.create().withClaim("username", user.getUsername()).withClaim("roles", user.getRoles().toString()).withSubject(user.getUsername()).withIssuedAt(Date.from(Instant.now())).withExpiresAt(Date.from(Instant.now().plus(12, ChronoUnit.HOURS))).withClaim("id",user.getId());
         return token.sign(alg);
     };
     private final JWTVerifier verifier = JWT.require(algorithm).build();

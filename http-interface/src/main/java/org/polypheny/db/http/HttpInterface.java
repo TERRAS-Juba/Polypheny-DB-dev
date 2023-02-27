@@ -21,10 +21,8 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.google.common.collect.ImmutableList;
 import com.google.gson.JsonSyntaxException;
 import io.javalin.Javalin;
-import io.javalin.http.BadRequestResponse;
-import io.javalin.http.Context;
 import io.javalin.http.Handler;
-import io.javalin.http.NotFoundResponse;
+import io.javalin.http.*;
 import io.javalin.plugin.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.jetty.http.HttpVersion;
@@ -55,6 +53,7 @@ import org.polypheny.security.authentication.AuthenticatorDb;
 import org.polypheny.security.authentication.dto.AuthenticationRequest;
 import org.polypheny.security.authentication.dto.AuthenticationResponse;
 import org.polypheny.security.authentication.model.User;
+import org.polypheny.security.policyengine.PolicyEngine;
 import org.polypheny.security.tokenmanagement.JwtManager;
 
 import java.io.FileNotFoundException;
@@ -68,7 +67,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import static io.javalin.apibuilder.ApiBuilder.*;
+import static io.javalin.apibuilder.ApiBuilder.delete;
+import static io.javalin.apibuilder.ApiBuilder.post;
 
 @Slf4j
 public class HttpInterface extends QueryInterface {
@@ -100,6 +100,9 @@ public class HttpInterface extends QueryInterface {
     //Add support for admin management
     CrudManager crudManager = new CrudManager();
 
+    // Add support for control access policy
+    PolicyEngine engine = PolicyEngine.getInstance();
+
     public HttpInterface(TransactionManager transactionManager, Authenticator authenticator, int ifaceId, String uniqueName, Map<String, String> settings) {
         super(transactionManager, authenticator, ifaceId, uniqueName, settings, true, false);
         this.uniqueName = uniqueName;
@@ -129,16 +132,21 @@ public class HttpInterface extends QueryInterface {
             }
 
         };
-        // Create the server
+        //***************************************
+        // Add support for SSL encryption
+        //***************************************
         server = Javalin.create(config -> {
             config.server(() -> {
-                // Access keystore
+                // Access keystore for self signed certificat
                 Path keystorePath = Paths.get(System.getenv("KEYSTORE_PATH")).toAbsolutePath();
                 if (!Files.exists(keystorePath)) try {
                     throw new FileNotFoundException(keystorePath.toString());
                 } catch (FileNotFoundException e) {
                     throw new RuntimeException(e);
                 }
+                //***************************************
+                // Add support for SSL encryption
+                //***************************************
                 // HTTP Configuration
                 HttpConfiguration httpConfig = new HttpConfiguration();
                 httpConfig.setSecureScheme("https");
@@ -171,15 +179,20 @@ public class HttpInterface extends QueryInterface {
                 ctx.result("Error: " + e.getMessage());
             }
         });
+        //***************************************
+        // HTTP server endpoints
+        //***************************************
         server.routes(() -> {
-            get("/", ctx -> ctx.json("HTTP Interface"));
             // Authentication
             post("/auth/user/login", login);
             post("/auth/admin/login", loginAdmin);
             // Query operations
             post("/query/mongo", ctx -> anyQuery(QueryLanguage.MONGO_QL, ctx));
             post("/query/mql", ctx -> anyQuery(QueryLanguage.MONGO_QL, ctx));
-            post("/query/sql", ctx -> anyQuery(QueryLanguage.SQL, ctx));
+            post("/query/sql", ctx -> {
+                validatePolySqlQuery(ctx);
+                anyQuery(QueryLanguage.SQL, ctx);
+            });
             post("/query/piglet", ctx -> anyQuery(QueryLanguage.PIG, ctx));
             post("/query/pig", ctx -> anyQuery(QueryLanguage.PIG, ctx));
             post("/query/cql", ctx -> anyQuery(QueryLanguage.CQL, ctx));
@@ -192,13 +205,18 @@ public class HttpInterface extends QueryInterface {
             delete("/dashboard/delete_role/{name}", deleteRole);
             StatusService.printInfo(String.format("%s started and is listening on port %d.", INTERFACE_NAME, port));
         });
+        // Configure response to be sent in json format
         server.before(("*"), ctx -> {
             ctx.res.setHeader("Content-Type", "application/json");
         });
+        // Validate user tokens
         server.before("/query/*", validateUserToken);
         server.before("/dashboard/*", validateAdminToken);
     }
 
+    //***************************************
+    // User login
+    //***************************************
     private final Handler login = ctx -> {
         User user = getUser(ctx);
         String token = manager.generateToken(user);
@@ -213,6 +231,9 @@ public class HttpInterface extends QueryInterface {
             throw new NotFoundResponse();
         }
     };
+    //***************************************
+    // Validate user token
+    //***************************************
     private final Handler validateUserToken = ctx -> {
         manager.extractTokenInformations(ctx);
     };
@@ -220,6 +241,9 @@ public class HttpInterface extends QueryInterface {
         Optional<DecodedJWT> decodedJWT = manager.extractTokenInformations(ctx);
         manager.validateUserRole(ctx, decodedJWT.get(), "ADMIN");
     };
+    //***************************************
+    // Admin crud operations
+    //***************************************
     private final Handler addUser = (ctx -> {
         AddUserRequest request = ctx.bodyAsClass(AddUserRequest.class);
         crudManager.addUser(request);
@@ -249,6 +273,9 @@ public class HttpInterface extends QueryInterface {
         ctx.status(204);
     });
 
+    //***************************************
+    // Retrieve user from database
+    //***************************************
     private User getUser(Context ctx) {
         AuthenticationRequest request = ctx.bodyAsClass(AuthenticationRequest.class);
         try {
@@ -258,6 +285,27 @@ public class HttpInterface extends QueryInterface {
         }
     }
 
+    //***************************************
+    // Valide polySql query before executing it
+    //***************************************
+    private void validatePolySqlQuery(Context ctx) {
+        QueryRequest query = ctx.bodyAsClass(QueryRequest.class);
+        Optional<DecodedJWT> decodedJWT = manager.extractTokenInformations(ctx);
+        String id = String.valueOf(decodedJWT.get().getClaim("id"));
+        String roles = String.valueOf(decodedJWT.get().getClaim("roles"));
+        roles = roles.replace("\"", "");
+        if (roles.contains("ADMIN")) return;
+        boolean validate;
+        validate = engine.validatePolySqlQuery(query.query, id, roles);
+        if (!validate) {
+            throw new ForbiddenResponse("Access violation");
+        }
+
+    }
+
+    //***************************************
+    // Execute sql query on polystore
+    //***************************************
     public void anyQuery(QueryLanguage language, final Context ctx) {
         QueryRequest query = ctx.bodyAsClass(QueryRequest.class);
 
